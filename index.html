@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media Vault</title>
+<style>
+  :root{
+    --bg:#0d0f14; --panel:#161922; --panel2:#1e2230; --accent:#7c5cff; --accent2:#5a3fd6;
+    --text:#eef0f6; --muted:#8a90a3; --danger:#ff5470; --ok:#3ddc97; --border:#2a2f3f;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  button{font-family:inherit;cursor:pointer;}
+  input{font-family:inherit;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+  /* ---------- Lock / Setup screens ---------- */
+  #lockScreen{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 20%, #1a1030, var(--bg));z-index:50;
+  }
+  .lockCard{width:320px;max-width:90vw;text-align:center;}
+  .lockLogo{font-size:42px;margin-bottom:6px;}
+  .lockTitle{font-size:20px;font-weight:700;margin-bottom:2px;}
+  .lockSub{color:var(--muted);font-size:13px;margin-bottom:22px;}
+  .dots{display:flex;justify-content:center;gap:12px;margin-bottom:22px;}
+  .dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);transition:.15s;}
+  .dot.filled{background:var(--accent);border-color:var(--accent);}
+  .dot.err{background:var(--danger);border-color:var(--danger);}
+  .keypad{display:grid;grid-template-columns:repeat(3,64px);gap:12px;justify-content:center;margin-bottom:10px;}
+  .key{height:64px;border-radius:50%;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:20px;}
+  .key:active{background:var(--panel2);}
+  .key.wide{border-radius:16px;font-size:14px;color:var(--muted);}
+  .lockMsg{min-height:18px;color:var(--danger);font-size:13px;margin-bottom:8px;}
+  .linkBtn{background:none;border:none;color:var(--muted);text-decoration:underline;font-size:12px;margin-top:8px;}
+  .setupNote{color:var(--muted);font-size:11px;margin-top:16px;line-height:1.5;}
+
+  /* ---------- App shell ---------- */
+  #app{display:none;height:100vh;flex-direction:column;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--border);}
+  header .brand{display:flex;align-items:center;gap:8px;font-weight:700;}
+  header .actions{display:flex;gap:8px;}
+  .iconBtn{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px;font-size:14px;}
+  .iconBtn:hover{border-color:var(--accent);}
+  .primaryBtn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px;}
+
+  main{flex:1;display:flex;overflow:hidden;}
+  #sidebar{width:190px;background:var(--panel);border-right:1px solid var(--border);padding:12px 8px;overflow-y:auto;flex-shrink:0;}
+  .folderItem{display:flex;justify-content:space-between;align-items:center;padding:9px 10px;border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;margin-bottom:2px;}
+  .folderItem:hover{background:var(--panel2);}
+  .folderItem.active{background:var(--panel2);color:var(--text);font-weight:600;}
+  .folderItem .count{font-size:11px;opacity:.6;}
+  .folderItem .del{opacity:0;font-size:11px;color:var(--danger);}
+  .folderItem:hover .del{opacity:1;}
+  #newFolderBtn{width:100%;text-align:left;background:none;border:none;color:var(--accent);font-size:13px;padding:9px 10px;}
+
+  #galleryWrap{flex:1;overflow-y:auto;padding:16px;}
+  #gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;}
+  .tile{position:relative;aspect-ratio:1/1;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .tile img,.tile video{width:100%;height:100%;object-fit:cover;}
+  .tile.locked{background:repeating-linear-gradient(45deg,var(--panel),var(--panel) 8px,var(--panel2) 8px,var(--panel2) 16px);}
+  .lock-icon{font-size:26px;}
+  .tile-icon{font-size:32px;}
+  .tile-spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .tile-name,.tile-label{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.75));color:#fff;font-size:10.5px;padding:12px 6px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tile-menu{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.5);border:none;color:#fff;border-radius:6px;width:22px;height:22px;font-size:14px;line-height:1;}
+  .emptyState{color:var(--muted);text-align:center;margin-top:60px;font-size:14px;}
+  .emptyState .big{font-size:34px;margin-bottom:10px;}
+
+  /* ---------- Modals ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60;padding:16px;}
+  .overlay.show{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px;width:340px;max-width:100%;max-height:88vh;overflow-y:auto;}
+  .modal h3{margin:0 0 12px;font-size:16px;}
+  .modal label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;}
+  .modal input[type=text],.modal input[type=password],.modal select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:14px;}
+  .modalRow{display:flex;align-items:center;gap:8px;margin-top:12px;}
+  .modalActions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  .btnDanger{background:var(--danger);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;}
+  .btnGhost{background:none;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 14px;font-size:14px;}
+  .dropZone{border:2px dashed var(--border);border-radius:12px;padding:26px 10px;text-align:center;color:var(--muted);font-size:13px;margin-top:6px;}
+  .dropZone.drag{border-color:var(--accent);color:var(--accent);}
+
+  #viewerModal .overlay{background:rgba(0,0,0,.92);}
+  #viewerContent{max-width:92vw;max-height:78vh;display:flex;align-items:center;justify-content:center;}
+  #viewerContent img,#viewerContent video{max-width:92vw;max-height:78vh;border-radius:10px;}
+  .viewerBar{display:flex;justify-content:space-between;align-items:center;margin-top:14px;color:var(--text);gap:10px;}
+  .viewerName{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--border);padding:10px 16px;border-radius:10px;font-size:13px;z-index:80;display:none;}
+</style>
+</head>
+<body>
+
+<!-- ============ LOCK / SETUP SCREEN ============ -->
+<div id="lockScreen">
+  <div class="lockCard">
+    <div class="lockLogo">🔐</div>
+    <div class="lockTitle" id="lockTitle">Media Vault</div>
+    <div class="lockSub" id="lockSub">Loading…</div>
+    <div class="dots" id="dots"></div>
+    <div class="lockMsg" id="lockMsg"></div>
+    <div class="keypad" id="keypad"></div>
+    <button class="linkBtn" id="resetLink">Forgot PIN? Reset vault (erases all data)</button>
+    <div class="setupNote">Everything is encrypted and stored only in this browser (IndexedDB). There is no password recovery — if you forget your PIN, the data cannot be decrypted.</div>
+  </div>
+</div>
+
+<!-- ============ MAIN APP ============ -->
+<div id="app">
+  <header>
+    <div class="brand">🔐 <span>Vault</span></div>
+    <div class="actions">
+      <button class="iconBtn" id="addBtn">＋ Add</button>
+      <button class="iconBtn" id="lockBtn">Lock</button>
+    </div>
+  </header>
+  <main>
+    <div id="sidebar">
+      <div id="folderList"></div>
+      <button id="newFolderBtn">＋ New folder</button>
+    </div>
+    <div id="galleryWrap">
+      <div id="gallery"></div>
+    </div>
+  </main>
+</div>
+
+<input type="file" id="fileInput" accept="image/*,video/*" multiple style="display:none">
+
+<!-- Add media modal -->
+<div class="overlay" id="addOverlay">
+  <div class="modal">
+    <h3>Add media</h3>
+    <div class="dropZone" id="dropZone">Tap to choose photos/videos<br>or drag & drop here</div>
+    <div class="modalRow">
+      <input type="checkbox" id="itemPinToggle">
+      <label style="margin:0" for="itemPinToggle">Protect these files with their own PIN (in addition to the vault PIN)</label>
+    </div>
+    <div id="itemPinFields" style="display:none">
+      <label>Item PIN</label>
+      <input type="password" id="itemPinValue" inputmode="numeric" placeholder="4+ digits">
+    </div>
+    <div class="modalActions">
+      <button class="btnGhost" id="addCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- New folder modal -->
+<div class="overlay" id="folderOverlay">
+  <div class="modal">
+    <h3>New folder</h3>
+    <label>Folder name</label>
+    <input type="text" id="folderNameInput" placeholder="e.g. Trip photos">
+    <div class="modalActions">
+      <button class="btnGhost" id="folderCancel">Cancel</button>
+      <button class="primaryBtn" id="folderCreate">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tile menu modal -->
+<div class="overlay" id="menuOverlay">
+  <div class="modal">
+    <h3>Item options</h3>
+    <label>Move to folder</label>
+    <select id="moveSelect"></select>
+    <div class="modalActions">
+      <button class="btnGhost" id="menuClose">Close</button>
+      <button class="btnDanger" id="menuDelete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Item PIN prompt modal -->
+<div class="overlay" id="itemPinOverlay">
+  <div class="modal">
+    <h3>Enter item PIN</h3>
+    <input type="password" id="itemPinPrompt" inputmode="numeric" placeholder="PIN">
+    <div class="lockMsg" id="itemPinMsg"></div>
+    <div class="modalActions">
+      <button class="btnGhost" id="itemPinCancel">Cancel</button>
+      <button class="primaryBtn" id="itemPinSubmit">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<!-- Viewer modal -->
+<div class="overlay" id="viewerOverlay">
+  <div class="modal" style="width:auto;background:transparent;border:none;box-shadow:none;">
+    <div id="viewerContent"></div>
+    <div class="viewerBar">
+      <span class="viewerName" id="viewerName"></span>
+      <div style="display:flex;gap:8px">
+        <button class="btnGhost" id="viewerDownload">Download</button>
+        <button class="btnGhost" id="viewerClose">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Reset confirm modal -->
+<div class="overlay" id="resetOverlay">
+  <div class="modal">
+    <h3>Reset vault?</h3>
+    <p style="font-size:13px;color:var(--muted)">This permanently deletes every folder and file in this vault. This cannot be undone. Type <b>DELETE</b> to confirm.</p>
+    <input type="text" id="resetConfirmInput" placeholder="DELETE">
+    <div class="modalActions">
+      <button class="btnGhost" id="resetCancel">Cancel</button>
+      <button class="btnDanger" id="resetConfirm">Erase everything</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  /* ================= IndexedDB helpers ================= */
+  const DB_NAME = 'mediaVaultDB', DB_VERSION = 1;
+  let db;
+  function openDB(){
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const d = e.target.result;
+        if(!d.objectStoreNames.contains('items')) d.createObjectStore('items', {keyPath:'id'});
+        if(!d.objectStoreNames.contains('folders')) d.createObjectStore('folders', {keyPath:'id'});
+      };
+      req.onsuccess = () => { db = req.result; resolve(db); };
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function idbGetAll(store){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readonly');
+      const r = tx.objectStore(store).getAll();
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  }
+  function idbPut(store, val){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).put(val);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  function idbDelete(store, id){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  function idbClear(store){
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  /* ================= Crypto helpers ================= */
+  function randomBytes(len){ return crypto.getRandomValues(new Uint8Array(len)); }
+  function bufToB64(buf){
+    const bytes = new Uint8Array(buf); let bin = '';
+    for(let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  function b64ToBuf(b64){
+    const bin = atob(b64); const arr = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+  async function deriveKey(pin, salt){
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), {name:'PBKDF2'}, false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      {name:'PBKDF2', salt, iterations:200000, hash:'SHA-256'},
+      baseKey, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']
+    );
+  }
+  async function encryptBytes(key, bytes){
+    const iv = randomBytes(12);
+    const cipher = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, bytes);
+    return {iv, cipher: new Uint8Array(cipher)};
+  }
+  async function decryptBytes(key, iv, cipher){
+    const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, cipher);
+    return new Uint8Array(plain);
+  }
+  function escapeHtml(s){
+    return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function toast(msg){
+    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toast._h); toast._h = setTimeout(()=> t.style.display='none', 2200);
+  }
+
+  /* ================= State ================= */
+  let masterKey = null;
+  let pinBuffer = '';
+  let mode = 'unlock'; // 'unlock' | 'setup' | 'setupConfirm' | 'itemPin'
+  let setupFirstPin = '';
+  let currentFolderId = 'ALL';
+  let pendingFiles = [];
+  let objectUrls = [];
+  let itemPinContext = null; // {item, resolve, reject}
+
+  const META_KEY = 'mediaVaultMeta';
+
+  /* ================= Lock screen / PIN pad ================= */
+  const MIN_PIN = 4, MAX_PIN = 8;
+
+  function buildKeypad(){
+    const kp = $('keypad'); kp.innerHTML = '';
+    const layout = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+    layout.forEach(k => {
+      const b = document.createElement('button');
+      b.className = 'key' + (k==='⌫' ? ' wide' : '');
+      b.textContent = k;
+      if(k === ''){ b.style.visibility='hidden'; }
+      else b.addEventListener('click', () => onKey(k));
+      kp.appendChild(b);
+    });
+  }
+  function renderDots(){
+    const wrap = $('dots'); wrap.innerHTML = '';
+    const len = Math.max(pinBuffer.length, MIN_PIN);
+    for(let i=0;i<Math.max(len, pinBuffer.length); i++){
+      const d = document.createElement('div');
+      d.className = 'dot' + (i < pinBuffer.length ? ' filled' : '');
+      wrap.appendChild(d);
+    }
+  }
+  function shakeError(msg){
+    $('lockMsg').textContent = msg;
+    document.querySelectorAll('#dots .dot').forEach(d => d.classList.add('err'));
+    setTimeout(() => { pinBuffer=''; renderDots(); $('lockMsg').textContent=''; }, 500);
+  }
+  async function onKey(k){
+    if(k === '⌫'){ pinBuffer = pinBuffer.slice(0,-1); renderDots(); return; }
+    if(pinBuffer.length >= MAX_PIN) return;
+    pinBuffer += k;
+    renderDots();
+    if(mode === 'setup'){
+      if(pinBuffer.length >= MIN_PIN && pinBuffer.length === MAX_PIN){ /* allow manual continue below too */ }
+    }
+    // auto-submit isn't forced; user can press further digits then hit an implicit "done".
+    // We trigger submit when they've typed >=MIN_PIN and pause isn't required: use a "confirm" affordance via long PIN or Enter.
+  }
+  // Use Enter key / a submit gesture: we add a virtual submit when pinBuffer length is between MIN and MAX and user presses Enter,
+  // but for a touch keypad we instead auto-advance once MIN reached AND next action differs. Simplify: add explicit submit on reaching MAX,
+  // or via keyboard Enter, or a tap-and-hold isn't ideal — so add a subtle "Done" behavior: submit fires when length>=MIN and 400ms pass without new key.
+  let submitTimer = null;
+  const origOnKey = onKey;
+  async function onKeyWrapped(k){
+    await origOnKey(k);
+    clearTimeout(submitTimer);
+    if(k !== '⌫' && pinBuffer.length >= MIN_PIN){
+      submitTimer = setTimeout(handleSubmit, 550);
+    }
+  }
+  // rebind keypad clicks to wrapped handler
+  function buildKeypad2(){
+    const kp = $('keypad'); kp.innerHTML = '';
+    const layout = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+    layout.forEach(k => {
+      const b = document.createElement('button');
+      b.className = 'key' + (k==='⌫' ? ' wide' : '');
+      b.textContent = k;
+      if(k === ''){ b.style.visibility='hidden'; }
+      else b.addEventListener('click', () => onKeyWrapped(k));
+      kp.appendChild(b);
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if($('lockScreen').style.display === 'none') { handleItemPinKeydown(e); return; }
+    if(e.key >= '0' && e.key <= '9') onKeyWrapped(e.key);
+    else if(e.key === 'Backspace') onKeyWrapped('⌫');
+    else if(e.key === 'Enter') handleSubmit();
+  });
+  function handleItemPinKeydown(e){
+    if(!$('itemPinOverlay').classList.contains('show')) return;
+    if(e.key === 'Enter') $('itemPinSubmit').click();
+  }
+
+  async function handleSubmit(){
+    clearTimeout(submitTimer);
+    const pin = pinBuffer;
+    if(pin.length < MIN_PIN) return;
+
+    if(mode === 'setup'){
+      setupFirstPin = pin;
+      pinBuffer = ''; renderDots();
+      mode = 'setupConfirm';
+      $('lockTitle').textContent = 'Confirm your PIN';
+      $('lockSub').textContent = 'Enter it once more';
+      return;
+    }
+    if(mode === 'setupConfirm'){
+      if(pin !== setupFirstPin){
+        shakeError('PINs did not match — try again');
+        mode = 'setup';
+        setTimeout(()=>{
+          $('lockTitle').textContent = 'Create a vault PIN';
+          $('lockSub').textContent = 'Choose a 4–8 digit PIN';
+        }, 520);
+        return;
+      }
+      await createMasterPin(pin);
+      pinBuffer = '';
+      await enterApp();
+      return;
+    }
+    // unlock mode
+    const ok = await unlockWithPin(pin);
+    if(ok){
+      pinBuffer = '';
+      await enterApp();
+    } else {
+      shakeError('Incorrect PIN');
+    }
+  }
+
+  async function createMasterPin(pin){
+    const salt = randomBytes(16);
+    const key = await deriveKey(pin, salt);
+    const {iv, cipher} = await encryptBytes(key, new TextEncoder().encode('vault-ok'));
+    localStorage.setItem(META_KEY, JSON.stringify({
+      salt: bufToB64(salt), checkIv: bufToB64(iv), checkCipher: bufToB64(cipher)
+    }));
+    masterKey = key;
+  }
+  async function unlockWithPin(pin){
+    const meta = JSON.parse(localStorage.getItem(META_KEY));
+    const salt = b64ToBuf(meta.salt);
+    const key = await deriveKey(pin, salt);
+    try{
+      const plain = await decryptBytes(key, b64ToBuf(meta.checkIv), b64ToBuf(meta.checkCipher));
+      if(new TextDecoder().decode(plain) === 'vault-ok'){ masterKey = key; return true; }
+      return false;
+    }catch(e){ return false; }
+  }
+
+  function showLockScreen(){
+    $('lockScreen').style.display = 'flex';
+    $('app').style.display = 'none';
+    pinBuffer = '';
+    renderDots();
+    const meta = localStorage.getItem(META_KEY);
+    if(meta){
+      mode = 'unlock';
+      $('lockTitle').textContent = 'Enter your PIN';
+      $('lockSub').textContent = 'Unlock your vault';
+    } else {
+      mode = 'setup';
+      $('lockTitle').textContent = 'Create a vault PIN';
+      $('lockSub').textContent = 'Choose a 4–8 digit PIN';
+    }
+  }
+
+  async function enterApp(){
+    $('lockScreen').style.display = 'none';
+    $('app').style.display = 'flex';
+    currentFolderId = 'ALL';
+    await renderFolders();
+    await renderGallery();
+  }
+
+  function lockVault(){
+    masterKey = null;
+    objectUrls.forEach(u => URL.revokeObjectURL(u));
+    objectUrls = [];
+    showLockScreen();
+  }
+
+  /* ================= Folders ================= */
+  async function renderFolders(){
+    const folders = await idbGetAll('folders');
+    const items = await idbGetAll('items');
+    const list = $('folderList'); list.innerHTML = '';
+
+    const countAll = items.length;
+    const countUnsorted = items.filter(i => !i.folderId).length;
+
+    list.appendChild(folderRow('ALL', 'All items', countAll, false));
+    list.appendChild(folderRow(null, 'Unsorted', countUnsorted, false));
+    folders.forEach(f => {
+      const c = items.filter(i => i.folderId === f.id).length;
+      list.appendChild(folderRow(f.id, f.name, c, true));
+    });
+  }
+  function folderRow(id, name, count, deletable){
+    const row = document.createElement('div');
+    row.className = 'folderItem' + (currentFolderId === id ? ' active' : '');
+    row.innerHTML = `<span>${escapeHtml(name)}</span><span class="count">${count}</span>`;
+    row.addEventListener('click', async () => { currentFolderId = id; await renderFolders(); await renderGallery(); });
+    if(deletable){
+      const del = document.createElement('span');
+      del.className = 'del'; del.textContent = '✕'; del.title = 'Delete folder';
+      del.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if(!confirm(`Delete folder "${name}"? Items inside will move to Unsorted.`)) return;
+        const items = await idbGetAll('items');
+        for(const it of items){ if(it.folderId === id){ it.folderId = null; await idbPut('items', it); } }
+        await idbDelete('folders', id);
+        if(currentFolderId === id) currentFolderId = 'ALL';
+        await renderFolders(); await renderGallery();
+      });
+      row.appendChild(del);
+    }
+    return row;
+  }
+
+  $('newFolderBtn').addEventListener('click', () => {
+    $('folderNameInput').value = '';
+    $('folderOverlay').classList.add('show');
+    $('folderNameInput').focus();
+  });
+  $('folderCancel').addEventListener('click', () => $('folderOverlay').classList.remove('show'));
+  $('folderCreate').addEventListener('click', async () => {
+    const name = $('folderNameInput').value.trim();
+    if(!name) return;
+    await idbPut('folders', {id: crypto.randomUUID(), name, createdAt: Date.now()});
+    $('folderOverlay').classList.remove('show');
+    await renderFolders();
+  });
+
+  /* ================= Add media ================= */
+  $('addBtn').addEventListener('click', () => {
+    pendingFiles = [];
+    $('itemPinToggle').checked = false;
+    $('itemPinFields').style.display = 'none';
+    $('itemPinValue').value = '';
+    $('addOverlay').classList.add('show');
+  });
+  $('addCancel').addEventListener('click', () => $('addOverlay').classList.remove('show'));
+  $('itemPinToggle').addEventListener('change', (e) => {
+    $('itemPinFields').style.display = e.target.checked ? 'block' : 'none';
+  });
+  $('dropZone').addEventListener('click', () => $('fileInput').click());
+  $('dropZone').addEventListener('dragover', (e) => { e.preventDefault(); $('dropZone').classList.add('drag'); });
+  $('dropZone').addEventListener('dragleave', () => $('dropZone').classList.remove('drag'));
+  $('dropZone').addEventListener('drop', async (e) => {
+    e.preventDefault(); $('dropZone').classList.remove('drag');
+    await handleFiles(e.dataTransfer.files);
+  });
+  $('fileInput').addEventListener('change', async (e) => { await handleFiles(e.target.files); });
+
+  async function handleFiles(fileList){
+    const files = Array.from(fileList || []);
+    if(files.length === 0) return;
+    const useItemPin = $('itemPinToggle').checked;
+    const itemPin = $('itemPinValue').value;
+    if(useItemPin && itemPin.length < 4){
+      toast('Item PIN must be at least 4 digits');
+      return;
+    }
+    const folderId = (currentFolderId === 'ALL') ? null : currentFolderId;
+    for(const file of files){
+      try{
+        await addFile(file, folderId, useItemPin ? itemPin : null);
+      }catch(err){
+        console.error(err);
+        toast('Failed to add ' + file.name);
+      }
+    }
+    $('addOverlay').classList.remove('show');
+    $('fileInput').value = '';
+    toast(`Added ${files.length} item${files.length>1?'s':''}`);
+    await renderFolders(); await renderGallery();
+  }
+
+  async function addFile(file, folderId, itemPin){
+    const arrayBuf = await file.arrayBuffer();
+    let key = masterKey, itemSalt = null;
+    if(itemPin){
+      itemSalt = randomBytes(16);
+      key = await deriveKey(itemPin, itemSalt);
+    }
+    const metaBytes = new TextEncoder().encode(JSON.stringify({name: file.name, mime: file.type}));
+    const metaEnc = await encryptBytes(key, metaBytes);
+    const dataEnc = await encryptBytes(key, new Uint8Array(arrayBuf));
+    const item = {
+      id: crypto.randomUUID(),
+      folderId: folderId || null,
+      type: file.type.startsWith('video') ? 'video' : 'image',
+      hasItemPin: !!itemPin,
+      itemSalt: itemSalt,
+      metaIv: metaEnc.iv, encryptedMeta: metaEnc.cipher,
+      dataIv: dataEnc.iv, encryptedData: dataEnc.cipher,
+      createdAt: Date.now()
+    };
+    await idbPut('items', item);
+  }
+
+  async function decryptItem(item, pin){
+    let key = masterKey;
+    if(item.hasItemPin){
+      if(!pin) throw new Error('PIN required');
+      key = await deriveKey(pin, item.itemSalt);
+    }
+    const metaBytes = await decryptBytes(key, item.metaIv, item.encryptedMeta);
+    const meta = JSON.parse(new TextDecoder().decode(metaBytes));
+    const dataBytes = await decryptBytes(key, item.dataIv, item.encryptedData);
+    return {meta, dataBytes};
+  }
+
+  /* ================= Gallery ================= */
+  async function renderGallery(){
+    objectUrls.forEach(u => URL.revokeObjectURL(u));
+    objectUrls = [];
+    const allItems = await idbGetAll('items');
+    const items = allItems.filter(i => {
+      if(currentFolderId === 'ALL') return true;
+      if(currentFolderId === null) return !i.folderId;
+      return i.folderId === currentFolderId;
+    }).sort((a,b) => b.createdAt - a.createdAt);
+
+    const gallery = $('gallery');
+    gallery.innerHTML = '';
+    if(items.length === 0){
+      gallery.innerHTML = `<div class="emptyState" style="grid-column:1/-1">
+        <div class="big">🗂️</div>No items in this folder yet.<br>Tap “＋ Add” to bring in photos or videos.
+      </div>`;
+      return;
+    }
+
+    for(const item of items){
+      const tile = document.createElement('div');
+      tile.className = 'tile' + (item.hasItemPin ? ' locked' : '');
+
+      if(item.hasItemPin){
+        tile.innerHTML = `<div class="lock-icon">🔒</div><div class="tile-label">Locked ${item.type}</div>`;
+      } else if(item.type === 'image'){
+        tile.innerHTML = `<div class="tile-spinner"></div>`;
+        decryptItem(item).then(({meta, dataBytes}) => {
+          const blob = new Blob([dataBytes], {type: meta.mime || 'image/jpeg'});
+          const url = URL.createObjectURL(blob);
+          objectUrls.push(url);
+          tile.innerHTML = `<img src="${url}" alt=""><div class="tile-name">${escapeHtml(meta.name)}</div>`;
+          addTileMenu(tile, item);
+        }).catch(() => { tile.innerHTML = '<div class="tile-icon">⚠️</div>'; });
+      } else {
+        tile.innerHTML = `<div class="tile-icon">🎬</div><div class="tile-name">video</div>`;
+        decryptItem(item).then(({meta}) => {
+          const nameEl = tile.querySelector('.tile-name');
+          if(nameEl) nameEl.textContent = meta.name;
+        }).catch(() => {});
+      }
+
+      tile.addEventListener('click', () => openItem(item));
+      addTileMenu(tile, item);
+      gallery.appendChild(tile);
+    }
+  }
+  function addTileMenu(tile, item){
+    if(tile.querySelector('.tile-menu')) return;
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'tile-menu'; menuBtn.textContent = '⋮';
+    menuBtn.addEventListener('click', (e) => { e.stopPropagation(); openTileMenu(item); });
+    tile.appendChild(menuBtn);
+  }
+
+  /* ================= Tile menu (move / delete) ================= */
+  let menuItemRef = null;
+  async function openTileMenu(item){
+    menuItemRef = item;
+    const folders = await idbGetAll('folders');
+    const sel = $('moveSelect'); sel.innerHTML = '';
+    sel.appendChild(new Option('Unsorted', 'null'));
+    folders.forEach(f => sel.appendChild(new Option(f.name, f.id)));
+    sel.value = item.folderId || 'null';
+    $('menuOverlay').classList.add('show');
+  }
+  $('menuClose').addEventListener('click', () => $('menuOverlay').classList.remove('show'));
+  $('moveSelect').addEventListener('change', async (e) => {
+    if(!menuItemRef) return;
+    const val = e.target.value;
+    menuItemRef.folderId = (val === 'null') ? null : val;
+    await idbPut('items', menuItemRef);
+    await renderFolders(); await renderGallery();
+  });
+  $('menuDelete').addEventListener('click', async () => {
+    if(!menuItemRef) return;
+    if(!confirm('Delete this item permanently?')) return;
+    await idbDelete('items', menuItemRef.id);
+    $('menuOverlay').classList.remove('show');
+    await renderFolders(); await renderGallery();
+  });
+
+  /* ================= Item PIN prompt ================= */
+  function askItemPin(item){
+    return new Promise((resolve, reject) => {
+      itemPinContext = {resolve, reject};
+      $('itemPinPrompt').value = '';
+      $('itemPinMsg').textContent = '';
+      $('itemPinOverlay').classList.add('show');
+      setTimeout(() => $('itemPinPrompt').focus(), 50);
+    });
+  }
+  $('itemPinCancel').addEventListener('click', () => {
+    $('itemPinOverlay').classList.remove('show');
+    if(itemPinContext) itemPinContext.reject(new Error('cancelled'));
+    itemPinContext = null;
+  });
+  $('itemPinSubmit').addEventListener('click', () => {
+    const pin = $('itemPinPrompt').value;
+    if(!pin){ $('itemPinMsg').textContent = 'Enter a PIN'; return; }
+    if(itemPinContext){
+      $('itemPinOverlay').classList.remove('show');
+      itemPinContext.resolve(pin);
+      itemPinContext = null;
+    }
+  });
+
+  /* ================= Viewer ================= */
+  let currentViewerUrl = null, currentViewerName = null;
+  async function openItem(item){
+    let pin = null;
+    if(item.hasItemPin){
+      try{ pin = await askItemPin(item); }
+      catch(e){ return; }
+    }
+    let decrypted;
+    try{
+      decrypted = await decryptItem(item, pin);
+    }catch(e){
+      if(item.hasItemPin){ toast('Incorrect item PIN'); }
+      else toast('Could not decrypt this item');
+      return;
+    }
+    const {meta, dataBytes} = decrypted;
+    const blob = new Blob([dataBytes], {type: meta.mime});
+    const url = URL.createObjectURL(blob);
+    currentViewerUrl = url; currentViewerName = meta.name;
+    const content = $('viewerContent');
+    content.innerHTML = '';
+    if(item.type === 'image'){
+      const img = document.createElement('img'); img.src = url; content.appendChild(img);
+    } else {
+      const vid = document.createElement('video'); vid.src = url; vid.controls = true; vid.autoplay = true;
+      content.appendChild(vid);
+    }
+    $('viewerName').textContent = meta.name;
+    $('viewerOverlay').classList.add('show');
+  }
+  $('viewerClose').addEventListener('click', closeViewer);
+  $('viewerOverlay').addEventListener('click', (e) => { if(e.target.id === 'viewerOverlay') closeViewer(); });
+  function closeViewer(){
+    $('viewerOverlay').classList.remove('show');
+    $('viewerContent').innerHTML = '';
+    if(currentViewerUrl){ URL.revokeObjectURL(currentViewerUrl); currentViewerUrl = null; }
+  }
+  $('viewerDownload').addEventListener('click', () => {
+    if(!currentViewerUrl) return;
+    const a = document.createElement('a');
+    a.href = currentViewerUrl; a.download = currentViewerName || 'file';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  /* ================= Lock button / reset ================= */
+  $('lockBtn').addEventListener('click', lockVault);
+  $('resetLink').addEventListener('click', () => {
+    $('resetConfirmInput').value = '';
+    $('resetOverlay').classList.add('show');
+  });
+  $('resetCancel').addEventListener('click', () => $('resetOverlay').classList.remove('show'));
+  $('resetConfirm').addEventListener('click', async () => {
+    if($('resetConfirmInput').value !== 'DELETE'){ toast('Type DELETE to confirm'); return; }
+    await idbClear('items'); await idbClear('folders');
+    localStorage.removeItem(META_KEY);
+    location.reload();
+  });
+
+  // close modals on backdrop click (generic)
+  document.querySelectorAll('.overlay').forEach(ov => {
+    ov.addEventListener('click', (e) => {
+      if(e.target === ov && ov.id !== 'viewerOverlay') ov.classList.remove('show');
+    });
+  });
+
+  /* ================= Auto-lock on inactivity ================= */
+  let inactivityTimer = null;
+  function resetInactivity(){
+    clearTimeout(inactivityTimer);
+    if(masterKey){
+      inactivityTimer = setTimeout(() => { lockVault(); toast('Locked due to inactivity'); }, 5 * 60 * 1000);
+    }
+  }
+  ['click','keydown','touchstart'].forEach(evt => document.addEventListener(evt, resetInactivity));
+
+  /* ================= Init ================= */
+  (async function init(){
+    buildKeypad2();
+    await openDB();
+    showLockScreen();
+  })();
+})();
+</script>
+</body>
+</html>
