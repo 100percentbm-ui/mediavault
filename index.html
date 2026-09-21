@@ -63,6 +63,8 @@
   .tile.locked{background:repeating-linear-gradient(45deg,var(--panel),var(--panel) 8px,var(--panel2) 8px,var(--panel2) 16px);}
   .lock-icon{font-size:26px;}
   .tile-icon{font-size:32px;}
+  .tile-textPreview{position:absolute;inset:0;padding:8px;font-size:9.5px;line-height:1.35;color:var(--muted);overflow:hidden;white-space:pre-wrap;word-break:break-word;background:var(--panel2);}
+  #viewerContent pre{max-width:min(80vw,640px);max-height:70vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;line-height:1.5;color:var(--text);white-space:pre-wrap;word-break:break-word;text-align:left;}
   .tile-spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
   .tile-name,.tile-label{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.75));color:#fff;font-size:10.5px;padding:12px 6px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -129,13 +131,13 @@
   </main>
 </div>
 
-<input type="file" id="fileInput" accept="image/*,video/*" multiple style="display:none">
+<input type="file" id="fileInput" accept="image/*,video/*,text/plain,.txt" multiple style="display:none">
 
 <!-- Add media modal -->
 <div class="overlay" id="addOverlay">
   <div class="modal">
     <h3>Add media</h3>
-    <div class="dropZone" id="dropZone">Tap to choose photos/videos<br>or drag & drop here</div>
+    <div class="dropZone" id="dropZone">Tap to choose photos, videos or .txt files<br>or drag & drop here</div>
     <div class="modalRow">
       <input type="checkbox" id="itemPinToggle">
       <label style="margin:0" for="itemPinToggle">Protect these files with their own PIN (in addition to the vault PIN)</label>
@@ -595,7 +597,9 @@
     const item = {
       id: crypto.randomUUID(),
       folderId: folderId || null,
-      type: file.type.startsWith('video') ? 'video' : 'image',
+      type: file.type.startsWith('video') ? 'video'
+            : (file.type.startsWith('text') || /\.txt$/i.test(file.name)) ? 'text'
+            : 'image',
       hasItemPin: !!itemPin,
       itemSalt: itemSalt,
       metaIv: metaEnc.iv, encryptedMeta: metaEnc.cipher,
@@ -650,6 +654,14 @@
           const url = URL.createObjectURL(blob);
           objectUrls.push(url);
           tile.innerHTML = `<img src="${url}" alt=""><div class="tile-name">${escapeHtml(meta.name)}</div>`;
+          addTileMenu(tile, item);
+        }).catch(() => { tile.innerHTML = '<div class="tile-icon">⚠️</div>'; });
+      } else if(item.type === 'text'){
+        tile.innerHTML = `<div class="tile-spinner"></div>`;
+        decryptItem(item).then(({meta, dataBytes}) => {
+          const text = new TextDecoder().decode(dataBytes);
+          const snippet = text.slice(0, 180);
+          tile.innerHTML = `<div class="tile-textPreview">${escapeHtml(snippet)}</div><div class="tile-name">📄 ${escapeHtml(meta.name)}</div>`;
           addTileMenu(tile, item);
         }).catch(() => { tile.innerHTML = '<div class="tile-icon">⚠️</div>'; });
       } else {
@@ -749,6 +761,10 @@
     content.innerHTML = '';
     if(item.type === 'image'){
       const img = document.createElement('img'); img.src = url; content.appendChild(img);
+    } else if(item.type === 'text'){
+      const pre = document.createElement('pre');
+      pre.textContent = new TextDecoder().decode(dataBytes);
+      content.appendChild(pre);
     } else {
       const vid = document.createElement('video'); vid.src = url; vid.controls = true; vid.autoplay = true;
       content.appendChild(vid);
